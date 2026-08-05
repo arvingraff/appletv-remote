@@ -1,8 +1,8 @@
 """Run this on the Pi to pair with Apple TV: .venv-pi/bin/python3 pair_pi.py"""
-import asyncio, pyatv, re, os
+import asyncio, pyatv, json, os
 
-APPLE_TV_ID = "12:FD:8F:CE:56:74"
-SERVER_FILE  = os.path.join(os.path.dirname(__file__), "appletv_server.py")
+APPLE_TV_ID  = "12:FD:8F:CE:56:74"
+CREDS_FILE   = os.path.join(os.path.dirname(__file__), "credentials.json")
 
 async def main():
     print("Scanning for Apple TV...")
@@ -26,23 +26,11 @@ async def main():
         print(f"Got {protocol.name} credentials ✅")
         await pairing.close()
 
-    # Write credentials directly into appletv_server.py
-    with open(SERVER_FILE, "r") as f:
-        src = f.read()
+    # Save credentials to separate file (never touched by git)
+    with open(CREDS_FILE, "w") as f:
+        json.dump({"companion": creds["Companion"], "airplay": creds["AirPlay"]}, f, indent=2)
 
-    src = re.sub(
-        r'COMPANION_CREDENTIALS = \(.*?\)',
-        f'COMPANION_CREDENTIALS = (\n    "{creds["Companion"]}"\n)',
-        src, flags=re.DOTALL)
-    src = re.sub(
-        r'AIRPLAY_CREDENTIALS = \(.*?\)',
-        f'AIRPLAY_CREDENTIALS = (\n    "{creds["AirPlay"]}"\n)',
-        src, flags=re.DOTALL)
-
-    with open(SERVER_FILE, "w") as f:
-        f.write(src)
-
-    print("\n✅ Credentials saved to appletv_server.py automatically!")
+    print("\n✅ Credentials saved to credentials.json!")
     print("Now run: sudo systemctl restart appletv-remote")
 
 asyncio.run(main())

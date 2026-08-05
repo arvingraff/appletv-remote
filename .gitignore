@@ -1,27 +1,7 @@
-# Python
+credentials.json
+.venv/
+.venv-pi/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
 build/
-*.spec.bak
-
-# Virtual envs
-venv/
-.env/
-.venv/
-
-# macOS
-.DS_Store
-*.icns
-AppIcon.iconset/
-
-# PyInstaller output (large binaries — rebuild locally)
 dist/
-build/
-
-# Secrets — DO NOT COMMIT credentials
-# (credentials are hardcoded in apple_tv_gui.py — strip before pushing)

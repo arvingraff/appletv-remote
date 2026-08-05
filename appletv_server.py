@@ -16,20 +16,19 @@ log.setLevel(logging.ERROR)
 from flask import Flask, jsonify, request as flask_request
 import pyatv
 
-# ── Config (must match apple_tv_gui.py) ──────────────────────────────────────
+# ── Config ───────────────────────────────────────────────────────────────────
 APPLE_TV_ID = "12:FD:8F:CE:56:74"
-COMPANION_CREDENTIALS = (
-    "fcdc3f48ff8846f5e4ab9513e996504b5d1bd1ac42d6a2bc8b2b433e1ec9eef3:"
-    "2778b797daf3cbf3909a063fa049419bc02e5c2aa16a4c3a00bd552137dbeb37:"
-    "31324644384643452d353637342d344243422d413435452d413233343646333731334431:"
-    "62396137376637662d396639662d343461302d623338642d356165626530323336376166"
-)
-AIRPLAY_CREDENTIALS = (
-    "fcdc3f48ff8846f5e4ab9513e996504b5d1bd1ac42d6a2bc8b2b433e1ec9eef3:"
-    "b267a6daf1231833fa57942ad1712c74eb89f990076221b8fda361b42cc2ba0e:"
-    "31324644384643452d353637342d344243422d413435452d413233343646333731334431:"
-    "34333131306434342d393966662d343531362d626131372d613637643232396666303063"
-)
+
+import json as _json, os as _os
+_CREDS_FILE = _os.path.join(_os.path.dirname(__file__), "credentials.json")
+try:
+    _creds = _json.load(open(_CREDS_FILE))
+    COMPANION_CREDENTIALS = _creds["companion"]
+    AIRPLAY_CREDENTIALS   = _creds["airplay"]
+except Exception:
+    COMPANION_CREDENTIALS = ""
+    AIRPLAY_CREDENTIALS   = ""
+    print("⚠️  credentials.json not found — run pair_pi.py first")
 PORT = 9876
 
 # ── State ─────────────────────────────────────────────────────────────────────
