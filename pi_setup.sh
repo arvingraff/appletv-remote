@@ -17,6 +17,8 @@ echo "────────────────────────�
 
 # ── 1. System packages ────────────────────────────────────────────
 echo "[1/5] Installing system packages…"
+# Remove any stale cloudflare apt source that may cause update to fail
+sudo rm -f /etc/apt/sources.list.d/cloudflared.list /usr/share/keyrings/cloudflare-main.gpg
 sudo apt-get update -qq
 sudo apt-get install -y -qq python3 python3-pip python3-venv libavahi-compat-libdnssd-dev
 
@@ -72,6 +74,8 @@ echo "[5/5] Cloudflare Tunnel (optional — lets you use the remote from ANYWHER
 read -r -p " Install cloudflared for remote access? [y/N] " CF_ANSWER
 if [[ "$CF_ANSWER" =~ ^[Yy]$ ]]; then
     echo "   Installing cloudflared…"
+    # Remove any old broken apt sources first
+    sudo rm -f /etc/apt/sources.list.d/cloudflared.list /usr/share/keyrings/cloudflare-main.gpg
     ARCH=$(dpkg --print-architecture)
     CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
     echo "   Downloading from: $CF_URL"
