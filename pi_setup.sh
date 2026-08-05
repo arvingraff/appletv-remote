@@ -72,12 +72,10 @@ echo "[5/5] Cloudflare Tunnel (optional — lets you use the remote from ANYWHER
 read -r -p " Install cloudflared for remote access? [y/N] " CF_ANSWER
 if [[ "$CF_ANSWER" =~ ^[Yy]$ ]]; then
     echo "   Installing cloudflared…"
-    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-        | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
-    echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" \
-        | sudo tee /etc/apt/sources.list.d/cloudflared.list > /dev/null
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq cloudflared
+    ARCH=$(dpkg --print-architecture)
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb" -o /tmp/cloudflared.deb
+    sudo dpkg -i /tmp/cloudflared.deb
+    rm /tmp/cloudflared.deb
 
     # Create a quick tunnel (no login needed — generates a random URL)
     sudo tee "$TUNNEL_SERVICE" > /dev/null <<EOF
