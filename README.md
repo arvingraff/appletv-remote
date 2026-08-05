@@ -1,3 +1,47 @@
+# Apple TV Remote + LEGO NXT Robot – Python Controller
+
+## 🍎 Apple TV Remote (Raspberry Pi 4 — always-on)
+
+Control your Apple TV from your iPhone **even when your Mac is off**, using a Raspberry Pi 4 as a 24/7 server.
+
+### Quick Setup (on the Pi)
+
+```bash
+# 1. Clone the repo on your Pi
+git clone https://github.com/YOUR_USERNAME/nxtlego2.git
+cd nxtlego2
+
+# 2. Run the one-shot setup script
+bash pi_setup.sh
+```
+
+The script will:
+- Install Python, pyatv, Flask
+- Set up a **systemd service** (auto-starts on boot, auto-restarts on crash)
+- Optionally install a **Cloudflare Tunnel** for remote access from *anywhere*
+
+### Usage
+
+| Mode | URL |
+|------|-----|
+| Home WiFi | `http://<pi-ip>:9876` |
+| Anywhere (Cloudflare) | `https://xxxx.trycloudflare.com` |
+
+Get the Cloudflare URL after setup:
+```bash
+sudo journalctl -u cloudflared-appletv -n 30 | grep trycloudflare
+```
+
+### Useful Pi commands
+
+```bash
+sudo systemctl status appletv-remote    # check status
+sudo journalctl -u appletv-remote -f    # live logs
+sudo systemctl restart appletv-remote  # restart
+```
+
+---
+
 # LEGO NXT Robot – Python Controller
 
 Control your LEGO Mindstorms NXT brick with Python using the `nxt-python` library.
