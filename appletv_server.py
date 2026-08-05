@@ -200,6 +200,9 @@ PAGE = r"""<!DOCTYPE html>
     <button class="btn-wide red"  onclick="cmd('sleep')">⏻ Sleep</button>
     <button class="btn-wide gray" onclick="cmd('screensaver')">🌙 Screen saver</button>
   </div>
+  <div class="row">
+    <button class="btn-wide dark" onclick="cmd('subtitles')">💬 Subtitles</button>
+  </div>
 </div>
 
 <div class="card">
@@ -274,6 +277,7 @@ def api_do():
         elif action == "skip_forward":  await rc.skip_forward()
         elif action == "skip_backward": await rc.skip_backward()
         elif action == "screensaver":   await rc.screensaver()
+        elif action == "subtitles":    await rc.subtitle()
         elif action == "sleep":
             try:    await atv.power.turn_off()
             except Exception: await rc.suspend()
