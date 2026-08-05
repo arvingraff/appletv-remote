@@ -73,9 +73,9 @@ read -r -p " Install cloudflared for remote access? [y/N] " CF_ANSWER
 if [[ "$CF_ANSWER" =~ ^[Yy]$ ]]; then
     echo "   Installing cloudflared…"
     ARCH=$(dpkg --print-architecture)
-    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb" -o /tmp/cloudflared.deb
-    sudo dpkg -i /tmp/cloudflared.deb
-    rm /tmp/cloudflared.deb
+    CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
+    echo "   Downloading from: $CF_URL"
+    curl -L --fail "$CF_URL" -o /tmp/cloudflared.deb && sudo dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb
 
     # Create a quick tunnel (no login needed — generates a random URL)
     sudo tee "$TUNNEL_SERVICE" > /dev/null <<EOF
