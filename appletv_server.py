@@ -412,24 +412,26 @@ def doorbell_speak():
         tmp_path = f.name
 
     def play_audio():
+        import os
+        xdg = f"/run/user/{os.getuid()}"
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = xdg
+        bt_sink = "bluez_output.F4:2B:7D:2D:71:3B"
         try:
-            subprocess.run(
-                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path],
-                timeout=30
-            )
-        except FileNotFoundError:
-            # ffplay not installed — try ffmpeg → aplay pipeline
+            # Ensure Bluetooth sink volume is up
+            subprocess.run(["pactl", "set-sink-volume", bt_sink, "100%"],
+                           env=env, timeout=5)
+            subprocess.run(["paplay", "--device", bt_sink, tmp_path],
+                           env=env, timeout=30)
+        except Exception:
+            # Fallback: ffplay to default output
             try:
-                ffmpeg = subprocess.Popen(
-                    ["ffmpeg", "-i", tmp_path, "-f", "wav", "-loglevel", "quiet", "-"],
-                    stdout=subprocess.PIPE
+                subprocess.run(
+                    ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path],
+                    env=env, timeout=30
                 )
-                subprocess.run(["aplay", "-q"], stdin=ffmpeg.stdout, timeout=30)
-                ffmpeg.wait()
             except Exception as e:
                 print(f"Audio playback failed: {e}")
-        except subprocess.TimeoutExpired:
-            pass
         try:
             os.remove(tmp_path)
         except Exception:
