@@ -177,6 +177,27 @@ def detect_person_and_blur(snapshot_path):
         return True
 
 
+def person_likely():
+    """
+    Compare snapshot vs background reference using Pillow (no cv2).
+    Returns True if enough pixels changed to suggest a person is present.
+    """
+    try:
+        from PIL import Image
+        import numpy as np
+        img = np.array(Image.open(SNAPSHOT_PATH).convert("L"), dtype=np.int16)
+        ref = np.array(Image.open(REFERENCE_PATH).convert("L"), dtype=np.int16)
+        if img.shape != ref.shape:
+            return True  # can't compare, allow through
+        diff = np.abs(img - ref)
+        fraction = np.sum(diff > 25) / diff.size
+        print(f"   pixel change vs background: {fraction:.1%}")
+        return fraction > 0.04  # 4% changed = likely a person
+    except Exception as e:
+        print(f"   person check error: {e}, allowing through")
+        return True
+
+
 def take_snapshot():
     """Capture doorbell photo. Returns True on success."""
     try:
@@ -194,6 +215,10 @@ def send_notification():
             requests.post(NTFY_URL, headers={
                 "Title": "Doorbell!", "Priority": "high", "Tags": "bell",
             }, data="Someone is at the door!", timeout=5)
+            return
+        # Person detection: skip if background hasn't changed enough
+        if not person_likely():
+            print("   No person detected, ignoring trigger.")
             return
         # Blur left and right edges for privacy using imagemagick (no cv2/SIGILL risk)
         try:
