@@ -9,6 +9,7 @@ Record doorbell sound: .venv-pi/bin/python3 doorbell.py --record-doorbell
 """
 
 import sys
+sys.stdout.reconfigure(line_buffering=True)  # flush every line so systemd journal sees output
 import time
 import subprocess
 import numpy as np
