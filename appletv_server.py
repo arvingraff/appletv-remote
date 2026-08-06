@@ -412,30 +412,26 @@ def doorbell_speak():
         tmp_path = f.name
 
     def play_audio():
-        import os
+        import os, subprocess
         xdg = f"/run/user/{os.getuid()}"
         env = os.environ.copy()
         env["XDG_RUNTIME_DIR"] = xdg
         bt_sink = "bluez_output.F4:2B:7D:2D:71:3B"
+        wav_path = tmp_path + ".wav"
         try:
-            # Ensure Bluetooth sink volume is up
-            subprocess.run(["pactl", "set-sink-volume", bt_sink, "100%"],
-                           env=env, timeout=5)
-            subprocess.run(["paplay", "--device", bt_sink, tmp_path],
-                           env=env, timeout=30)
-        except Exception:
-            # Fallback: ffplay to default output
-            try:
-                subprocess.run(
-                    ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path],
-                    env=env, timeout=30
-                )
-            except Exception as e:
-                print(f"Audio playback failed: {e}")
-        try:
-            os.remove(tmp_path)
-        except Exception:
-            pass
+            # Convert WebM/Opus → WAV so paplay can handle it
+            subprocess.run(
+                ["ffmpeg", "-i", tmp_path, "-f", "wav", "-loglevel", "quiet", "-y", wav_path],
+                timeout=10
+            )
+            subprocess.run(["pactl", "set-sink-volume", bt_sink, "100%"], env=env, timeout=5)
+            subprocess.run(["paplay", "--device", bt_sink, wav_path], env=env, timeout=30)
+        except Exception as e:
+            print(f"Audio playback failed: {e}")
+        finally:
+            for p in [tmp_path, wav_path]:
+                try: os.remove(p)
+                except Exception: pass
 
     threading.Thread(target=play_audio, daemon=True).start()
     return "ok"
