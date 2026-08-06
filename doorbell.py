@@ -37,12 +37,12 @@ REFERENCE_PATH   = "/tmp/doorbell_reference.jpg"
 # Melody fingerprint — record your exact doorbell sound with --record-doorbell
 # Set MELODY_MATCH = False to disable (fall back to frequency/volume only)
 MELODY_REFERENCE = "/home/arvingraff/appletv-remote/doorbell_sound.npy"
-MELODY_MATCH     = True    # set True after running --record-doorbell
-MELODY_SIMILARITY = 0.35   # 0-1, lower = more slack (0.35 = fairly lenient)
+MELODY_MATCH     = False   # melody matching disabled — recording was noisy
+MELODY_SIMILARITY = 0.35   # 0-1, lower = more slack
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
-DIRECTION_FILTER  = True
+DIRECTION_FILTER  = False  # disabled — direction was filtering out valid rings
 LEFT_CHANNELS     = [0, 1]   # mic indices facing left (tuned via calibration)
 RIGHT_CHANNELS    = [2, 3]   # mic indices facing right
 # How much louder the left side must be vs right (1.2 = 20% louder)
@@ -113,7 +113,7 @@ def capture_image(path):
         check=True, timeout=10
     )
     subprocess.run(
-        ["convert", "-rotate", "-90", path, path],
+        ["convert", "-rotate", "-90", "-flop", path, path],
         check=True, timeout=5
     )
 
