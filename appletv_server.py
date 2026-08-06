@@ -530,11 +530,19 @@ if __name__ == "__main__":
     asyncio.run_coroutine_threadsafe(_refresh(), loop)
 
     ip = get_local_ip()
-    # Use HTTPS so Safari on iPhone allows microphone access on the /doorbell page.
-    # ssl_context='adhoc' generates a self-signed cert automatically (needs pyopenssl).
-    try:
-        print(f"🌐 Starting server on https://{ip}:{PORT}  (HTTP mic requires HTTPS)")
-        flask_app.run(host="0.0.0.0", port=PORT, ssl_context="adhoc", use_reloader=False)
-    except Exception:
-        print(f"🌐 Starting server on http://{ip}:{PORT}  (install pyopenssl for HTTPS/mic)")
-        flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False)
+    # Use a persistent self-signed cert so Safari doesn't reject it on every restart.
+    # Generate once on the Pi:
+    #   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes -subj '/CN=192.168.86.217'
+    import os as _os
+    _cert = _os.path.join(_os.path.dirname(__file__), "cert.pem")
+    _key  = _os.path.join(_os.path.dirname(__file__), "key.pem")
+    if _os.path.exists(_cert) and _os.path.exists(_key):
+        print(f"🌐 Starting server on https://{ip}:{PORT}  (persistent cert)")
+        flask_app.run(host="0.0.0.0", port=PORT, ssl_context=(_cert, _key), use_reloader=False)
+    else:
+        try:
+            print(f"🌐 Starting server on https://{ip}:{PORT}  (adhoc cert)")
+            flask_app.run(host="0.0.0.0", port=PORT, ssl_context="adhoc", use_reloader=False)
+        except Exception:
+            print(f"🌐 Starting server on http://{ip}:{PORT}")
+            flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False)
