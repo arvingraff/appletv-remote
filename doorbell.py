@@ -33,14 +33,15 @@ def send_notification():
 
 def listen():
     CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_SECONDS)
-    bytes_per_chunk = CHUNK_SIZE * 2  # 16-bit = 2 bytes per sample
+    CHANNELS = 6  # ReSpeaker 4 Mic Array requires 6 channels
+    bytes_per_chunk = CHUNK_SIZE * CHANNELS * 2  # 16-bit = 2 bytes per sample
 
     cmd = [
         "arecord",
         "-D", "hw:3,0",  # ReSpeaker 4 Mic Array (card 3, device 0)
         "-f", "S16_LE",
         "-r", str(SAMPLE_RATE),
-        "-c", "1",
+        "-c", str(CHANNELS),
         "-t", "raw",
         "-q",   # quiet — suppress arecord status messages
         "-",
@@ -58,8 +59,8 @@ def listen():
             data = proc.stdout.read(bytes_per_chunk)
             if not data:
                 break
-            samples = np.frombuffer(data, dtype=np.int16)
-            volume = np.abs(samples).mean()
+            samples = np.frombuffer(data, dtype=np.int16).reshape(-1, CHANNELS)
+            volume = np.abs(samples[:, 0]).mean()  # use channel 0 only
 
             if volume > THRESHOLD:
                 now = time.time()
