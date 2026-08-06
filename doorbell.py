@@ -29,8 +29,11 @@ DOORBELL_FREQ     = 434
 FREQ_TOLERANCE    = 150   # Hz
 
 # Camera snapshot on doorbell ring
-CAMERA_DEVICE = "/dev/video0"
-SNAPSHOT_PATH = "/tmp/doorbell.jpg"
+CAMERA_DEVICE    = "/dev/video0"
+SNAPSHOT_PATH    = "/tmp/doorbell.jpg"
+REFERENCE_PATH   = "/tmp/doorbell_reference.jpg"
+# How much of the image must change to count as a person (0.0-1.0)
+CHANGE_THRESHOLD = 0.05  # 5% of pixels changed
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
@@ -49,35 +52,48 @@ def dominant_frequency(samples, sample_rate):
     return freqs[np.argmax(fft)]
 
 
+def capture_image(path):
+    """Capture a photo from the webcam to the given path."""
+    subprocess.run(
+        ["fswebcam", "-d", CAMERA_DEVICE, "-r", "640x480",
+         "--no-banner", "-q", path],
+        check=True, timeout=10
+    )
+    subprocess.run(
+        ["convert", "-rotate", "-90", path, path],
+        check=True, timeout=5
+    )
+
+
+def update_reference():
+    """Save a background reference image (no person present)."""
+    capture_image(REFERENCE_PATH)
+    print("Reference background updated.")
+
+
 def detect_person(image_path):
-    """Return True if a person is detected in the image."""
+    """Return True if the image differs significantly from the background reference."""
     try:
         import cv2
-        img = cv2.imread(image_path)
-        if img is None:
-            return True  # if image can't be read, don't block notification
-        hog = cv2.HOGDescriptor()
-        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-        boxes, _ = hog.detectMultiScale(img, winStride=(8, 8), padding=(4, 4), scale=1.05)
-        return len(boxes) > 0
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        ref = cv2.imread(REFERENCE_PATH, cv2.IMREAD_GRAYSCALE)
+        if img is None or ref is None:
+            return True  # can't compare — don't block
+        diff = cv2.absdiff(img, ref)
+        _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+        changed = cv2.countNonZero(thresh)
+        ratio = changed / (img.shape[0] * img.shape[1])
+        print(f"Image change: {ratio:.1%} (threshold {CHANGE_THRESHOLD:.0%})")
+        return ratio > CHANGE_THRESHOLD
     except Exception as e:
         print(f"Person detection error: {e}")
-        return True  # if detection fails, don't block notification
+        return True
 
 
 def take_snapshot():
-    """Capture a photo from the webcam. Returns True on success."""
+    """Capture doorbell photo. Returns True on success."""
     try:
-        subprocess.run(
-            ["fswebcam", "-d", CAMERA_DEVICE, "-r", "640x480",
-             "--no-banner", "-q", SNAPSHOT_PATH],
-            check=True, timeout=10
-        )
-        # Rotate 90° counter-clockwise to fix camera orientation
-        subprocess.run(
-            ["convert", "-rotate", "-90", SNAPSHOT_PATH, SNAPSHOT_PATH],
-            check=True, timeout=5
-        )
+        capture_image(SNAPSHOT_PATH)
         return True
     except Exception as e:
         print(f"Camera error: {e}")
@@ -128,9 +144,15 @@ def listen(calibrate=False):
         freq_info = f", freq={DOORBELL_FREQ}Hz±{FREQ_TOLERANCE}" if DOORBELL_FREQ else ", freq=any"
         print(f"Listening for doorbell (threshold={THRESHOLD}{freq_info})...")
         print(f"Notifications -> ntfy.sh/{NTFY_TOPIC}")
+        # Take initial background reference
+        try:
+            update_reference()
+        except Exception as e:
+            print(f"Warning: could not take reference image: {e}")
     print("Press Ctrl+C to stop.\n")
 
     last_detected = 0
+    last_reference = time.time()
 
     while True:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -155,6 +177,14 @@ def listen(calibrate=False):
                         direction = "LEFT" if ratio > DIRECTION_RATIO else "RIGHT" if ratio < 1/DIRECTION_RATIO else "CENTER"
                         print(f"volume={volume:.0f}  freq={freq:.0f} Hz  left={left_vol:.0f}  right={right_vol:.0f}  -> {direction}")
                     continue
+
+                # Refresh background reference every hour
+                if time.time() - last_reference > 3600:
+                    try:
+                        update_reference()
+                        last_reference = time.time()
+                    except Exception:
+                        pass
 
                 if volume > THRESHOLD:
                     # Frequency check (skip if DOORBELL_FREQ is 0)
