@@ -4,7 +4,7 @@ Uses arecord (ALSA) directly to avoid PulseAudio dependency when running as syst
 
 Run normally:       .venv-pi/bin/python3 doorbell.py
 Calibrate mode:     .venv-pi/bin/python3 doorbell.py --calibrate
-  (ring your doorbell and note the frequency printed, then set DOORBELL_FREQ below)
+  (ring your doorbell and note the frequency + direction printed, then set values below)
 """
 
 import sys
@@ -24,10 +24,19 @@ COOLDOWN      = 10
 CHUNK_SECONDS = 0.5
 SAMPLE_RATE   = 16000
 
-# Frequency filter — set DOORBELL_FREQ to your doorbell's tone (Hz) after calibrating.
-# Set to 0 to disable frequency filtering (any loud sound triggers).
-# FREQ_TOLERANCE: how many Hz above/below the target are accepted.
-DOORBELL_FREQ     = 434   # e.g. 880 for a typical doorbell
+# Frequency filter
+DOORBELL_FREQ     = 434
+FREQ_TOLERANCE    = 150   # Hz
+
+# Direction filter — ReSpeaker 4 Mic Array channels 0-3 are the 4 mics.
+# LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
+# Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
+# Run --calibrate and clap from the left — note which side shows higher volume.
+DIRECTION_FILTER  = False
+LEFT_CHANNELS     = [2, 3]   # mic indices facing left (tune after calibrating)
+RIGHT_CHANNELS    = [0, 1]   # mic indices facing right
+# How much louder the left side must be vs right (1.2 = 20% louder)
+DIRECTION_RATIO   = 1.2
 FREQ_TOLERANCE    = 150   # Hz
 
 
@@ -94,7 +103,11 @@ def listen(calibrate=False):
                 if calibrate:
                     if volume > THRESHOLD:
                         freq = dominant_frequency(channel, SAMPLE_RATE)
-                        print(f"volume={volume:.0f}  dominant_freq={freq:.0f} Hz")
+                        left_vol  = np.abs(samples[:, LEFT_CHANNELS]).mean()
+                        right_vol = np.abs(samples[:, RIGHT_CHANNELS]).mean()
+                        ratio = left_vol / (right_vol + 1)
+                        direction = "LEFT" if ratio > DIRECTION_RATIO else "RIGHT" if ratio < 1/DIRECTION_RATIO else "CENTER"
+                        print(f"volume={volume:.0f}  freq={freq:.0f} Hz  left={left_vol:.0f}  right={right_vol:.0f}  -> {direction}")
                     continue
 
                 if volume > THRESHOLD:
@@ -103,6 +116,15 @@ def listen(calibrate=False):
                         freq = dominant_frequency(channel, SAMPLE_RATE)
                         if abs(freq - DOORBELL_FREQ) > FREQ_TOLERANCE:
                             print(f"   (ignored — wrong freq {freq:.0f} Hz, expected {DOORBELL_FREQ} Hz)")
+                            continue
+
+                    # Direction check
+                    if DIRECTION_FILTER:
+                        left_vol  = np.abs(samples[:, LEFT_CHANNELS]).mean()
+                        right_vol = np.abs(samples[:, RIGHT_CHANNELS]).mean()
+                        ratio = left_vol / (right_vol + 1)
+                        if ratio < DIRECTION_RATIO:
+                            print(f"   (ignored — not from left, ratio={ratio:.2f})")
                             continue
 
                     now = time.time()
