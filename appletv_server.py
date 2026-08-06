@@ -292,9 +292,153 @@ poll();setInterval(poll,4000);
 
 flask_app = Flask(__name__)
 
-@flask_app.route("/")
-def index():
-    return PAGE
+# ── Doorbell intercom ─────────────────────────────────────────────────────────
+
+DOORBELL_SNAPSHOT = "/tmp/doorbell.jpg"
+
+DOORBELL_PAGE = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doorbell</title>
+  <style>
+    body { margin:0; background:#111; color:#fff; font-family:sans-serif;
+           display:flex; flex-direction:column; align-items:center; min-height:100vh; }
+    h2 { margin:16px 0 8px; font-size:1.2rem; }
+    #snap { width:100%; max-width:480px; border-radius:8px; display:block; }
+    #status { font-size:.85rem; color:#aaa; margin:6px; min-height:1.2em; }
+    #btn {
+      margin:20px; padding:28px 48px; font-size:1.4rem; border-radius:50px;
+      border:none; background:#1db954; color:#fff; cursor:pointer;
+      user-select:none; -webkit-user-select:none; touch-action:none;
+      box-shadow:0 4px 16px rgba(0,0,0,.4);
+    }
+    #btn.recording { background:#e53935; }
+    #btn:disabled { opacity:.4; cursor:default; }
+  </style>
+</head>
+<body>
+  <h2>🔔 Someone at the door</h2>
+  <img id="snap" src="/doorbell/photo" onerror="this.style.display='none'">
+  <div id="status">Photo updates every 5 seconds</div>
+  <button id="btn">🎤 Hold to Talk</button>
+
+  <script>
+    // Auto-refresh photo
+    setInterval(() => {
+      const img = document.getElementById('snap');
+      img.src = '/doorbell/photo?t=' + Date.now();
+      img.style.display = 'block';
+    }, 5000);
+
+    let mediaRecorder = null;
+    let chunks = [];
+    const btn = document.getElementById('btn');
+    const status = document.getElementById('status');
+
+    async function startTalk() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+        chunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+        mediaRecorder.start();
+        btn.classList.add('recording');
+        btn.textContent = '🔴 Release to Send';
+        status.textContent = 'Recording...';
+      } catch(e) {
+        status.textContent = 'Mic error: ' + e.message;
+      }
+    }
+
+    async function stopTalk() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, {type: mediaRecorder.mimeType});
+        status.textContent = 'Sending...';
+        try {
+          const r = await fetch('/doorbell/speak', {method:'POST', body:blob,
+            headers:{'Content-Type': blob.type}});
+          status.textContent = r.ok ? '✅ Sent!' : '❌ Failed';
+        } catch(e) { status.textContent = '❌ ' + e.message; }
+        btn.classList.remove('recording');
+        btn.textContent = '🎤 Hold to Talk';
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        setTimeout(() => { status.textContent = ''; }, 3000);
+      };
+      mediaRecorder.stop();
+    }
+
+    btn.addEventListener('mousedown',  startTalk);
+    btn.addEventListener('touchstart', e => { e.preventDefault(); startTalk(); }, {passive:false});
+    btn.addEventListener('mouseup',   stopTalk);
+    btn.addEventListener('mouseleave',stopTalk);
+    btn.addEventListener('touchend',  e => { e.preventDefault(); stopTalk(); }, {passive:false});
+  </script>
+</body>
+</html>"""
+
+
+@flask_app.route("/doorbell")
+def doorbell_intercom():
+    return DOORBELL_PAGE
+
+
+@flask_app.route("/doorbell/photo")
+def doorbell_photo():
+    from flask import send_file
+    import os
+    if os.path.exists(DOORBELL_SNAPSHOT):
+        return send_file(DOORBELL_SNAPSHOT, mimetype="image/jpeg",
+                         max_age=0, last_modified=os.path.getmtime(DOORBELL_SNAPSHOT))
+    return "", 404
+
+
+@flask_app.route("/doorbell/speak", methods=["POST"])
+def doorbell_speak():
+    import tempfile, threading, os
+    audio_data = flask_request.data
+    if not audio_data:
+        return "no audio", 400
+    suffix = ".webm"
+    content_type = flask_request.content_type or ""
+    if "ogg" in content_type:
+        suffix = ".ogg"
+    elif "mp4" in content_type:
+        suffix = ".mp4"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(audio_data)
+        tmp_path = f.name
+
+    def play_audio():
+        try:
+            subprocess.run(
+                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path],
+                timeout=30
+            )
+        except FileNotFoundError:
+            # ffplay not installed — try ffmpeg → aplay pipeline
+            try:
+                ffmpeg = subprocess.Popen(
+                    ["ffmpeg", "-i", tmp_path, "-f", "wav", "-loglevel", "quiet", "-"],
+                    stdout=subprocess.PIPE
+                )
+                subprocess.run(["aplay", "-q"], stdin=ffmpeg.stdout, timeout=30)
+                ffmpeg.wait()
+            except Exception as e:
+                print(f"Audio playback failed: {e}")
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+    threading.Thread(target=play_audio, daemon=True).start()
+    return "ok"
+
+
 
 @flask_app.route("/x/do", methods=["POST"])
 def api_do():

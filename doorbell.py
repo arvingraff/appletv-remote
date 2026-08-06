@@ -10,6 +10,7 @@ Record doorbell sound: .venv-pi/bin/python3 doorbell.py --record-doorbell
 
 import sys
 sys.stdout.reconfigure(line_buffering=True)  # flush every line so systemd journal sees output
+import socket
 import time
 import subprocess
 import numpy as np
@@ -209,12 +210,25 @@ def take_snapshot():
         return False
 
 
+def _get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "192.168.86.217"
+
+
 def send_notification():
     try:
         if not take_snapshot():
             print("Camera failed, sending without photo.")
+            intercom_url = f"http://{_get_local_ip()}:9876/doorbell"
             requests.post(NTFY_URL, headers={
                 "Title": "Doorbell!", "Priority": "high", "Tags": "bell",
+                "Actions": f"view, Talk Back, {intercom_url}",
             }, data="Someone is at the door!", timeout=5)
             return
         # Person detection: skip if background hasn't changed enough
@@ -239,9 +253,11 @@ def send_notification():
         except Exception as e:
             print(f"Blur failed: {e}")
         with open(SNAPSHOT_PATH, "rb") as f:
+            intercom_url = f"http://{_get_local_ip()}:9876/doorbell"
             requests.post(NTFY_URL, data=f, headers={
                 "Title": "Doorbell!", "Priority": "high",
                 "Tags": "bell", "Filename": "doorbell.jpg",
+                "Actions": f"view, Talk Back, {intercom_url}",
             }, timeout=15)
         print("Notification sent!")
     except Exception as e:
