@@ -225,7 +225,7 @@ def send_notification():
     try:
         if not take_snapshot():
             print("Camera failed, sending without photo.")
-            intercom_url = f"http://{_get_local_ip()}:9876/doorbell"
+            intercom_url = f"https://{_get_local_ip()}:9876/doorbell"
             requests.post(NTFY_URL, headers={
                 "Title": "Doorbell!", "Priority": "high", "Tags": "bell",
                 "Actions": f"view, Talk Back, {intercom_url}",
@@ -253,8 +253,7 @@ def send_notification():
         except Exception as e:
             print(f"Blur failed: {e}")
         with open(SNAPSHOT_PATH, "rb") as f:
-            intercom_url = f"http://{_get_local_ip()}:9876/doorbell"
-            requests.post(NTFY_URL, data=f, headers={
+            intercom_url = f"https://{_get_local_ip()}:9876/doorbell"
                 "Title": "Doorbell!", "Priority": "high",
                 "Tags": "bell", "Filename": "doorbell.jpg",
                 "Actions": f"view, Talk Back, {intercom_url}",
