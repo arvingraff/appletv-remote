@@ -57,6 +57,11 @@ def take_snapshot():
              "--no-banner", "-q", SNAPSHOT_PATH],
             check=True, timeout=10
         )
+        # Rotate 90° counter-clockwise to fix camera orientation
+        subprocess.run(
+            ["convert", "-rotate", "-90", SNAPSHOT_PATH, SNAPSHOT_PATH],
+            check=True, timeout=5
+        )
         return True
     except Exception as e:
         print(f"Camera error: {e}")
