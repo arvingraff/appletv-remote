@@ -20,7 +20,7 @@ CHUNK_SECONDS = 0.5
 def send_notification():
     try:
         requests.post(NTFY_URL, headers={
-            "Title": "🔔 Doorbell!",
+            "Title": "Doorbell!",
             "Priority": "high",
             "Tags": "bell",
         }, data="Someone is at the door!", timeout=5)
