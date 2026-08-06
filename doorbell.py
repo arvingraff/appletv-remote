@@ -28,7 +28,9 @@ SAMPLE_RATE   = 16000
 DOORBELL_FREQ     = 434
 FREQ_TOLERANCE    = 150   # Hz
 
-# Direction filter — ReSpeaker 4 Mic Array channels 0-3 are the 4 mics.
+# Camera snapshot on doorbell ring
+CAMERA_DEVICE = "/dev/video0"
+SNAPSHOT_PATH = "/tmp/doorbell.jpg"
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
@@ -47,13 +49,34 @@ def dominant_frequency(samples, sample_rate):
     return freqs[np.argmax(fft)]
 
 
+def take_snapshot():
+    """Capture a photo from the webcam. Returns True on success."""
+    try:
+        subprocess.run(
+            ["fswebcam", "-d", CAMERA_DEVICE, "-r", "640x480",
+             "--no-banner", "-q", SNAPSHOT_PATH],
+            check=True, timeout=10
+        )
+        return True
+    except Exception as e:
+        print(f"Camera error: {e}")
+        return False
+
+
 def send_notification():
     try:
-        requests.post(NTFY_URL, headers={
+        headers = {
             "Title": "Doorbell!",
             "Priority": "high",
             "Tags": "bell",
-        }, data="Someone is at the door!", timeout=5)
+        }
+        if take_snapshot():
+            with open(SNAPSHOT_PATH, "rb") as f:
+                headers["Filename"] = "doorbell.jpg"
+                requests.post(NTFY_URL, data=f, headers=headers, timeout=15)
+        else:
+            requests.post(NTFY_URL, headers=headers,
+                          data="Someone is at the door!", timeout=5)
         print("Notification sent!")
     except Exception as e:
         print(f"Failed to send notification: {e}")
