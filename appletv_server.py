@@ -397,7 +397,7 @@ def doorbell_photo():
 
 @flask_app.route("/doorbell/speak", methods=["POST"])
 def doorbell_speak():
-    import tempfile, threading, os
+    import tempfile, threading, os, subprocess
     audio_data = flask_request.data
     if not audio_data:
         return "no audio", 400
