@@ -32,8 +32,9 @@ FREQ_TOLERANCE    = 150   # Hz
 CAMERA_DEVICE    = "/dev/video0"
 SNAPSHOT_PATH    = "/tmp/doorbell.jpg"
 REFERENCE_PATH   = "/tmp/doorbell_reference.jpg"
-# How much of the image must change to count as a person (0.0-1.0)
-CHANGE_THRESHOLD = 0.05  # 5% of pixels changed
+# Minimum fraction of image that must change AND form a person-sized blob
+MIN_CHANGE       = 0.04   # 4% of pixels changed
+MIN_BLOB_AREA    = 0.04   # largest blob must cover at least 4% of image
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
@@ -71,22 +72,65 @@ def update_reference():
     print("Reference background updated.")
 
 
-def detect_person(image_path):
-    """Return True if the image differs significantly from the background reference."""
+def detect_person_and_blur(snapshot_path):
+    """
+    Returns True if a person-sized object appeared vs the background reference.
+    Also blurs the background in the snapshot for privacy (hides street/neighbours).
+    """
     try:
         import cv2
-        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        ref = cv2.imread(REFERENCE_PATH, cv2.IMREAD_GRAYSCALE)
+        img = cv2.imread(snapshot_path)
+        ref = cv2.imread(REFERENCE_PATH)
         if img is None or ref is None:
-            return True  # can't compare — don't block
-        diff = cv2.absdiff(img, ref)
-        _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-        changed = cv2.countNonZero(thresh)
-        ratio = changed / (img.shape[0] * img.shape[1])
-        print(f"Image change: {ratio:.1%} (threshold {CHANGE_THRESHOLD:.0%})")
-        return ratio > CHANGE_THRESHOLD
+            return True
+
+        total = img.shape[0] * img.shape[1]
+
+        # Compute difference mask
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray_ref = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
+        diff = cv2.absdiff(gray_img, gray_ref)
+        _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+
+        # Clean up noise with morphology
+        kernel = np.ones((20, 20), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+
+        changed_ratio = cv2.countNonZero(thresh) / total
+
+        # Find the largest contour (blob)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            print(f"No change detected ({changed_ratio:.1%})")
+            return False
+
+        largest = max(contours, key=cv2.contourArea)
+        blob_ratio = cv2.contourArea(largest) / total
+
+        print(f"Change: {changed_ratio:.1%}, largest blob: {blob_ratio:.1%}")
+
+        if changed_ratio < MIN_CHANGE or blob_ratio < MIN_BLOB_AREA:
+            print("Too small — ignoring (not a person)")
+            return False
+
+        # Blur background for privacy — keep only the person's bounding box sharp
+        x, y, w, h = cv2.boundingRect(largest)
+        pad = 40
+        x1 = max(0, x - pad)
+        y1 = max(0, y - pad)
+        x2 = min(img.shape[1], x + w + pad)
+        y2 = min(img.shape[0], y + h + pad)
+
+        blurred = cv2.GaussianBlur(img, (61, 61), 0)
+        blurred[y1:y2, x1:x2] = img[y1:y2, x1:x2]   # restore person area sharp
+
+        cv2.imwrite(snapshot_path, blurred)
+        print("Person detected, background blurred.")
+        return True
+
     except Exception as e:
-        print(f"Person detection error: {e}")
+        print(f"Detection error: {e}")
         return True
 
 
@@ -105,7 +149,7 @@ def send_notification():
         if not take_snapshot():
             print("Camera failed, skipping notification.")
             return
-        if not detect_person(SNAPSHOT_PATH):
+        if not detect_person_and_blur(SNAPSHOT_PATH):
             print("No person detected, ignoring.")
             return
         headers = {
