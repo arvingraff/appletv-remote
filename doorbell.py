@@ -195,17 +195,23 @@ def send_notification():
                 "Title": "Doorbell!", "Priority": "high", "Tags": "bell",
             }, data="Someone is at the door!", timeout=5)
             return
-        # Blur entire background for privacy
+        # Blur left and right edges for privacy using imagemagick (no cv2/SIGILL risk)
         try:
-            import cv2
-            img = cv2.imread(SNAPSHOT_PATH)
-            blurred = cv2.GaussianBlur(img, (61, 61), 0)
-            # Keep center strip sharp (where a person at the door would be)
-            h, w = img.shape[:2]
-            blurred[:, w//4:3*w//4] = img[:, w//4:3*w//4]
-            cv2.imwrite(SNAPSHOT_PATH, blurred)
-        except Exception:
-            pass
+            r = subprocess.run(["identify", "-format", "%w", SNAPSHOT_PATH],
+                               capture_output=True, text=True)
+            w = int(r.stdout.strip())
+            quarter = w // 4
+            right_x = 3 * w // 4
+            tmp = SNAPSHOT_PATH + ".tmp.jpg"
+            subprocess.run(["convert", SNAPSHOT_PATH,
+                            "-region", f"{quarter}x10000+0+0", "-blur", "0x20",
+                            tmp], check=True)
+            subprocess.run(["convert", tmp,
+                            "-region", f"{quarter}x10000+{right_x}+0", "-blur", "0x20",
+                            SNAPSHOT_PATH], check=True)
+            import os as _os; _os.remove(tmp)
+        except Exception as e:
+            print(f"Blur failed: {e}")
         with open(SNAPSHOT_PATH, "rb") as f:
             requests.post(NTFY_URL, data=f, headers={
                 "Title": "Doorbell!", "Priority": "high",
