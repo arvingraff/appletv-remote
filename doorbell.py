@@ -71,23 +71,38 @@ def melody_similarity(audio, reference):
 
 
 def record_doorbell_reference(cmd, sample_rate, chunk_size, channels, bytes_per_chunk):
-    """Record 3 seconds of doorbell sound and save as reference fingerprint."""
-    print("\nRECORD MODE — press Enter, then ring your doorbell...")
+    """Record doorbell sound between two Enter presses and save as reference fingerprint."""
+    print("\nRECORD MODE — press Enter to START recording, then Enter again to STOP...")
     input()
-    print("Recording 3 seconds...")
+    print("Recording... (press Enter to stop)")
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     chunks = []
-    for _ in range(int(3 / CHUNK_SECONDS)):
+
+    import threading
+    stop_event = threading.Event()
+
+    def wait_for_enter():
+        input()
+        stop_event.set()
+
+    t = threading.Thread(target=wait_for_enter, daemon=True)
+    t.start()
+
+    while not stop_event.is_set():
         data = proc.stdout.read(bytes_per_chunk)
         if data:
             samples = np.frombuffer(data, dtype=np.int16).reshape(-1, channels)
             chunks.append(samples[:, 0])
+
     proc.terminate()
+    if not chunks:
+        print("Nothing recorded.")
+        return
     recording = np.concatenate(chunks)
     np.save(MELODY_REFERENCE, recording)
-    print(f"Saved doorbell fingerprint to {MELODY_REFERENCE}")
+    duration = len(recording) / sample_rate
+    print(f"Saved {duration:.1f}s doorbell fingerprint to {MELODY_REFERENCE}")
     print("Now set MELODY_MATCH = True in doorbell.py and restart.")
-    return
 
 
 def capture_image(path):
