@@ -37,7 +37,7 @@ REFERENCE_PATH   = "/tmp/doorbell_reference.jpg"
 # Melody fingerprint — record your exact doorbell sound with --record-doorbell
 # Set MELODY_MATCH = False to disable (fall back to frequency/volume only)
 MELODY_REFERENCE = "/home/arvingraff/appletv-remote/doorbell_sound.npy"
-MELODY_MATCH     = False   # set True after running --record-doorbell
+MELODY_MATCH     = True    # set True after running --record-doorbell
 MELODY_SIMILARITY = 0.6    # 0-1, higher = stricter match
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
