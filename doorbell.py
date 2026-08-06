@@ -38,7 +38,7 @@ REFERENCE_PATH   = "/tmp/doorbell_reference.jpg"
 # Set MELODY_MATCH = False to disable (fall back to frequency/volume only)
 MELODY_REFERENCE = "/home/arvingraff/appletv-remote/doorbell_sound.npy"
 MELODY_MATCH     = True    # set True after running --record-doorbell
-MELODY_SIMILARITY = 0.6    # 0-1, higher = stricter match
+MELODY_SIMILARITY = 0.35   # 0-1, lower = more slack (0.35 = fairly lenient)
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
@@ -190,19 +190,27 @@ def take_snapshot():
 def send_notification():
     try:
         if not take_snapshot():
-            print("Camera failed, skipping notification.")
+            print("Camera failed, sending without photo.")
+            requests.post(NTFY_URL, headers={
+                "Title": "Doorbell!", "Priority": "high", "Tags": "bell",
+            }, data="Someone is at the door!", timeout=5)
             return
-        if not detect_person_and_blur(SNAPSHOT_PATH):
-            print("No person detected, ignoring.")
-            return
-        headers = {
-            "Title": "Doorbell!",
-            "Priority": "high",
-            "Tags": "bell",
-            "Filename": "doorbell.jpg",
-        }
+        # Blur entire background for privacy
+        try:
+            import cv2
+            img = cv2.imread(SNAPSHOT_PATH)
+            blurred = cv2.GaussianBlur(img, (61, 61), 0)
+            # Keep center strip sharp (where a person at the door would be)
+            h, w = img.shape[:2]
+            blurred[:, w//4:3*w//4] = img[:, w//4:3*w//4]
+            cv2.imwrite(SNAPSHOT_PATH, blurred)
+        except Exception:
+            pass
         with open(SNAPSHOT_PATH, "rb") as f:
-            requests.post(NTFY_URL, data=f, headers=headers, timeout=15)
+            requests.post(NTFY_URL, data=f, headers={
+                "Title": "Doorbell!", "Priority": "high",
+                "Tags": "bell", "Filename": "doorbell.jpg",
+            }, timeout=15)
         print("Notification sent!")
     except Exception as e:
         print(f"Failed to send notification: {e}")
@@ -253,6 +261,9 @@ def listen(calibrate=False, record_doorbell=False):
 
     last_detected = 0
     last_reference = time.time()
+    # Rolling audio buffer — keeps last 3 seconds for melody comparison
+    from collections import deque
+    audio_buffer = deque(maxlen=int(3.0 / CHUNK_SECONDS))
 
     while True:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -267,6 +278,7 @@ def listen(calibrate=False, record_doorbell=False):
                 samples = np.frombuffer(data, dtype=np.int16).reshape(-1, CHANNELS)
                 channel = samples[:, 0]
                 volume = np.abs(channel).mean()
+                audio_buffer.append(channel.copy())
 
                 if calibrate:
                     if volume > THRESHOLD:
@@ -287,9 +299,10 @@ def listen(calibrate=False, record_doorbell=False):
                         pass
 
                 if volume > THRESHOLD:
-                    # Melody fingerprint match (if enabled)
+                    # Melody fingerprint match (if enabled) — compare last 3s of audio
                     if melody_ref is not None:
-                        sim = melody_similarity(channel, melody_ref)
+                        combined = np.concatenate(list(audio_buffer))
+                        sim = melody_similarity(combined, melody_ref)
                         print(f"   melody similarity: {sim:.2f} (need {MELODY_SIMILARITY})")
                         if sim < MELODY_SIMILARITY:
                             print(f"   (ignored — sound doesn't match doorbell melody)")
