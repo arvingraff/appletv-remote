@@ -74,59 +74,47 @@ def update_reference():
 
 def detect_person_and_blur(snapshot_path):
     """
-    Returns True if a person-sized object appeared vs the background reference.
-    Also blurs the background in the snapshot for privacy (hides street/neighbours).
+    Returns True only if a human is detected by YOLOv8.
+    Blurs everything outside the person's bounding box for privacy.
     """
     try:
         import cv2
+        from ultralytics import YOLO
+
         img = cv2.imread(snapshot_path)
-        ref = cv2.imread(REFERENCE_PATH)
-        if img is None or ref is None:
+        if img is None:
             return True
 
-        total = img.shape[0] * img.shape[1]
+        # Load YOLOv8 nano (downloads ~6MB on first run)
+        model = YOLO("yolov8n.pt")
+        results = model(snapshot_path, verbose=False)
 
-        # Compute difference mask
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray_ref = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
-        diff = cv2.absdiff(gray_img, gray_ref)
-        _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+        # Find person detections (class 0 = person) with confidence > 50%
+        person_boxes = []
+        for r in results:
+            for box, cls, conf in zip(r.boxes.xyxy, r.boxes.cls, r.boxes.conf):
+                if int(cls) == 0 and float(conf) > 0.5:
+                    person_boxes.append([int(v) for v in box])
 
-        # Clean up noise with morphology
-        kernel = np.ones((20, 20), np.uint8)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-
-        changed_ratio = cv2.countNonZero(thresh) / total
-
-        # Find the largest contour (blob)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            print(f"No change detected ({changed_ratio:.1%})")
+        if not person_boxes:
+            print("No person detected by YOLO.")
             return False
 
-        largest = max(contours, key=cv2.contourArea)
-        blob_ratio = cv2.contourArea(largest) / total
+        print(f"Person detected ({len(person_boxes)} person(s)).")
 
-        print(f"Change: {changed_ratio:.1%}, largest blob: {blob_ratio:.1%}")
-
-        if changed_ratio < MIN_CHANGE or blob_ratio < MIN_BLOB_AREA:
-            print("Too small — ignoring (not a person)")
-            return False
-
-        # Blur background for privacy — keep only the person's bounding box sharp
-        x, y, w, h = cv2.boundingRect(largest)
-        pad = 40
-        x1 = max(0, x - pad)
-        y1 = max(0, y - pad)
-        x2 = min(img.shape[1], x + w + pad)
-        y2 = min(img.shape[0], y + h + pad)
-
+        # Blur entire image for privacy
         blurred = cv2.GaussianBlur(img, (61, 61), 0)
-        blurred[y1:y2, x1:x2] = img[y1:y2, x1:x2]   # restore person area sharp
+
+        # Restore sharp region around each detected person (tight crop, 15px padding)
+        for x1, y1, x2, y2 in person_boxes:
+            pad = 15
+            px1 = max(0, x1 - pad)
+            py1 = max(0, y1 - pad)
+            px2 = min(img.shape[1], x2 + pad)
+            py2 = min(img.shape[0], y2 + pad)
+            blurred[py1:py2, px1:px2] = img[py1:py2, px1:px2]
 
         cv2.imwrite(snapshot_path, blurred)
-        print("Person detected, background blurred.")
         return True
 
     except Exception as e:
