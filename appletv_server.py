@@ -419,13 +419,16 @@ def doorbell_speak():
         bt_sink = "bluez_output.F4:2B:7D:2D:71:3B"
         wav_path = tmp_path + ".wav"
         try:
-            # Convert WebM/Opus → WAV so paplay can handle it
+            # Convert WebM/Opus → WAV at 48000Hz stereo (matches Bluetooth sink)
             subprocess.run(
-                ["ffmpeg", "-i", tmp_path, "-f", "wav", "-loglevel", "quiet", "-y", wav_path],
+                ["ffmpeg", "-i", tmp_path,
+                 "-ar", "48000", "-ac", "2", "-f", "wav",
+                 "-loglevel", "quiet", "-y", wav_path],
                 timeout=10
             )
             subprocess.run(["pactl", "set-sink-volume", bt_sink, "100%"], env=env, timeout=5)
-            subprocess.run(["paplay", "--device", bt_sink, wav_path], env=env, timeout=30)
+            subprocess.run(["paplay", "--device", bt_sink,
+                            "--latency-msec=200", wav_path], env=env, timeout=30)
         except Exception as e:
             print(f"Audio playback failed: {e}")
         finally:
