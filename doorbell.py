@@ -27,8 +27,8 @@ SAMPLE_RATE   = 16000
 # Frequency filter — set DOORBELL_FREQ to your doorbell's tone (Hz) after calibrating.
 # Set to 0 to disable frequency filtering (any loud sound triggers).
 # FREQ_TOLERANCE: how many Hz above/below the target are accepted.
-DOORBELL_FREQ     = 0     # e.g. 880 for a typical doorbell
-FREQ_TOLERANCE    = 100   # Hz
+DOORBELL_FREQ     = 434   # e.g. 880 for a typical doorbell
+FREQ_TOLERANCE    = 150   # Hz
 
 
 def dominant_frequency(samples, sample_rate):
