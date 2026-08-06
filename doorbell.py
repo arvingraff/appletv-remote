@@ -37,6 +37,7 @@ def listen():
 
     cmd = [
         "arecord",
+        "-D", "hw:3,0",  # ReSpeaker 4 Mic Array (card 3, device 0)
         "-f", "S16_LE",
         "-r", str(SAMPLE_RATE),
         "-c", "1",
