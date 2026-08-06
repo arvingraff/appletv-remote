@@ -2,9 +2,10 @@
 Doorbell detector — listens via ReSpeaker mic, sends ntfy notification when doorbell rings.
 Uses arecord (ALSA) directly to avoid PulseAudio dependency when running as systemd service.
 
-Run normally:       .venv-pi/bin/python3 doorbell.py
-Calibrate mode:     .venv-pi/bin/python3 doorbell.py --calibrate
-  (ring your doorbell and note the frequency + direction printed, then set values below)
+Run normally:          .venv-pi/bin/python3 doorbell.py
+Calibrate audio:       .venv-pi/bin/python3 doorbell.py --calibrate
+Record doorbell sound: .venv-pi/bin/python3 doorbell.py --record-doorbell
+  (ring your doorbell when prompted — saves a 3-second audio fingerprint)
 """
 
 import sys
@@ -32,9 +33,12 @@ FREQ_TOLERANCE    = 150   # Hz
 CAMERA_DEVICE    = "/dev/video0"
 SNAPSHOT_PATH    = "/tmp/doorbell.jpg"
 REFERENCE_PATH   = "/tmp/doorbell_reference.jpg"
-# Minimum fraction of image that must change AND form a person-sized blob
-MIN_CHANGE       = 0.04   # 4% of pixels changed
-MIN_BLOB_AREA    = 0.04   # largest blob must cover at least 4% of image
+
+# Melody fingerprint — record your exact doorbell sound with --record-doorbell
+# Set MELODY_MATCH = False to disable (fall back to frequency/volume only)
+MELODY_REFERENCE = "/home/arvingraff/appletv-remote/doorbell_sound.npy"
+MELODY_MATCH     = False   # set True after running --record-doorbell
+MELODY_SIMILARITY = 0.6    # 0-1, higher = stricter match
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
@@ -51,6 +55,39 @@ def dominant_frequency(samples, sample_rate):
     fft = np.abs(np.fft.rfft(samples))
     freqs = np.fft.rfftfreq(len(samples), d=1.0 / sample_rate)
     return freqs[np.argmax(fft)]
+
+
+def melody_similarity(audio, reference):
+    """Normalized cross-correlation between two audio clips (0=no match, 1=perfect)."""
+    a = audio.astype(float)
+    r = reference.astype(float)
+    # Trim/pad to same length
+    length = min(len(a), len(r))
+    a, r = a[:length], r[:length]
+    norm = np.linalg.norm(a) * np.linalg.norm(r)
+    if norm == 0:
+        return 0.0
+    return float(np.dot(a, r) / norm)
+
+
+def record_doorbell_reference(cmd, sample_rate, chunk_size, channels, bytes_per_chunk):
+    """Record 3 seconds of doorbell sound and save as reference fingerprint."""
+    print("\nRECORD MODE — press Enter, then ring your doorbell...")
+    input()
+    print("Recording 3 seconds...")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    chunks = []
+    for _ in range(int(3 / CHUNK_SECONDS)):
+        data = proc.stdout.read(bytes_per_chunk)
+        if data:
+            samples = np.frombuffer(data, dtype=np.int16).reshape(-1, channels)
+            chunks.append(samples[:, 0])
+    proc.terminate()
+    recording = np.concatenate(chunks)
+    np.save(MELODY_REFERENCE, recording)
+    print(f"Saved doorbell fingerprint to {MELODY_REFERENCE}")
+    print("Now set MELODY_MATCH = True in doorbell.py and restart.")
+    return
 
 
 def capture_image(path):
@@ -89,11 +126,11 @@ def detect_person_and_blur(snapshot_path):
         model = YOLO("yolov8n.pt")
         results = model(snapshot_path, verbose=False)
 
-        # Find person detections (class 0 = person) with confidence > 50%
+        # Find person detections (class 0 = person) with confidence > 30%
         person_boxes = []
         for r in results:
             for box, cls, conf in zip(r.boxes.xyxy, r.boxes.cls, r.boxes.conf):
-                if int(cls) == 0 and float(conf) > 0.5:
+                if int(cls) == 0 and float(conf) > 0.3:
                     person_boxes.append([int(v) for v in box])
 
         if not person_boxes:
@@ -153,7 +190,7 @@ def send_notification():
         print(f"Failed to send notification: {e}")
 
 
-def listen(calibrate=False):
+def listen(calibrate=False, record_doorbell=False):
     CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_SECONDS)
     CHANNELS = 6  # ReSpeaker 4 Mic Array requires 6 channels
     bytes_per_chunk = CHUNK_SIZE * CHANNELS * 2  # 16-bit = 2 bytes per sample
@@ -168,6 +205,19 @@ def listen(calibrate=False):
         "-q",   # quiet — suppress arecord status messages
         "-",
     ]
+
+    if record_doorbell:
+        record_doorbell_reference(cmd, SAMPLE_RATE, CHUNK_SIZE, CHANNELS, bytes_per_chunk)
+        return
+
+    # Load melody reference if enabled
+    melody_ref = None
+    if MELODY_MATCH:
+        try:
+            melody_ref = np.load(MELODY_REFERENCE)
+            print(f"Melody fingerprint loaded ({len(melody_ref)} samples).")
+        except Exception as e:
+            print(f"Warning: could not load melody reference: {e}")
 
     if calibrate:
         print("CALIBRATE MODE — ring your doorbell and note the frequency.")
@@ -219,6 +269,14 @@ def listen(calibrate=False):
                         pass
 
                 if volume > THRESHOLD:
+                    # Melody fingerprint match (if enabled)
+                    if melody_ref is not None:
+                        sim = melody_similarity(channel, melody_ref)
+                        print(f"   melody similarity: {sim:.2f} (need {MELODY_SIMILARITY})")
+                        if sim < MELODY_SIMILARITY:
+                            print(f"   (ignored — sound doesn't match doorbell melody)")
+                            continue
+
                     # Frequency check (skip if DOORBELL_FREQ is 0)
                     if DOORBELL_FREQ:
                         freq = dominant_frequency(channel, SAMPLE_RATE)
@@ -253,4 +311,5 @@ def listen(calibrate=False):
 
 if __name__ == "__main__":
     calibrate = "--calibrate" in sys.argv
-    listen(calibrate=calibrate)
+    record_doorbell = "--record-doorbell" in sys.argv
+    listen(calibrate=calibrate, record_doorbell=record_doorbell)
