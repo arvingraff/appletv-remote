@@ -32,9 +32,9 @@ FREQ_TOLERANCE    = 150   # Hz
 # LEFT_CHANNELS / RIGHT_CHANNELS: which mic indices face left/right.
 # Set DIRECTION_FILTER = False to disable, or tune channel indices after calibrating.
 # Run --calibrate and clap from the left — note which side shows higher volume.
-DIRECTION_FILTER  = False
-LEFT_CHANNELS     = [2, 3]   # mic indices facing left (tune after calibrating)
-RIGHT_CHANNELS    = [0, 1]   # mic indices facing right
+DIRECTION_FILTER  = True
+LEFT_CHANNELS     = [0, 1]   # mic indices facing left (tuned via calibration)
+RIGHT_CHANNELS    = [2, 3]   # mic indices facing right
 # How much louder the left side must be vs right (1.2 = 20% louder)
 DIRECTION_RATIO   = 1.2
 FREQ_TOLERANCE    = 150   # Hz
