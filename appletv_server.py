@@ -529,5 +529,11 @@ if __name__ == "__main__":
     asyncio.run_coroutine_threadsafe(_refresh(), loop)
 
     ip = get_local_ip()
-    print(f"🌐 Starting server on http://{ip}:{PORT}")
-    flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False)
+    # Use HTTPS so Safari on iPhone allows microphone access on the /doorbell page.
+    # ssl_context='adhoc' generates a self-signed cert automatically (needs pyopenssl).
+    try:
+        print(f"🌐 Starting server on https://{ip}:{PORT}  (HTTP mic requires HTTPS)")
+        flask_app.run(host="0.0.0.0", port=PORT, ssl_context="adhoc", use_reloader=False)
+    except Exception:
+        print(f"🌐 Starting server on http://{ip}:{PORT}  (install pyopenssl for HTTPS/mic)")
+        flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False)
