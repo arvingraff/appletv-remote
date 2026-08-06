@@ -20,7 +20,7 @@ NTFY_TOPIC    = "Finnhaugveien16Doorbell"
 NTFY_URL      = f"https://ntfy.sh/{NTFY_TOPIC}"
 
 # How loud before we consider it a doorbell (0-32767, higher = less sensitive)
-THRESHOLD     = 3000
+THRESHOLD     = 4000
 # Seconds to wait after detecting before detecting again (avoid spam)
 COOLDOWN      = 10
 # How many seconds of audio to sample each loop
@@ -49,7 +49,7 @@ LEFT_CHANNELS     = [0, 1]   # mic indices facing left (tuned via calibration)
 RIGHT_CHANNELS    = [2, 3]   # mic indices facing right
 # How much louder the left side must be vs right (1.2 = 20% louder)
 DIRECTION_RATIO   = 1.2
-FREQ_TOLERANCE    = 150   # Hz
+FREQ_TOLERANCE    = 80    # Hz (tightened from 150 to reduce false triggers)
 
 
 def dominant_frequency(samples, sample_rate):
@@ -194,7 +194,7 @@ def person_likely():
         diff = np.abs(img - ref)
         fraction = np.sum(diff > 25) / diff.size
         print(f"   pixel change vs background: {fraction:.1%}")
-        return fraction > 0.04  # 4% changed = likely a person
+        return fraction > 0.10  # 10% changed = likely a person (raised from 4% to reduce false positives)
     except Exception as e:
         print(f"   person check error: {e}, allowing through")
         return True
