@@ -38,7 +38,7 @@ def listen():
 
     cmd = [
         "arecord",
-        "-D", "hw:3,0",  # ReSpeaker 4 Mic Array (card 3, device 0)
+        "-D", "plughw:ArrayUAC10,0",  # ReSpeaker by name (stable across reboots)
         "-f", "S16_LE",
         "-r", str(SAMPLE_RATE),
         "-c", str(CHANNELS),
@@ -51,13 +51,16 @@ def listen():
     print(f"Notifications -> ntfy.sh/{NTFY_TOPIC}")
     print("Press Ctrl+C to stop.\n")
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     last_detected = 0
 
     try:
         while True:
             data = proc.stdout.read(bytes_per_chunk)
             if not data:
+                err = proc.stderr.read().decode(errors="replace").strip()
+                if err:
+                    print(f"arecord error: {err}")
                 break
             samples = np.frombuffer(data, dtype=np.int16).reshape(-1, CHANNELS)
             volume = np.abs(samples[:, 0]).mean()  # use channel 0 only
