@@ -254,6 +254,7 @@ def send_notification():
             print(f"Blur failed: {e}")
         with open(SNAPSHOT_PATH, "rb") as f:
             intercom_url = f"https://{_get_local_ip()}:9876/doorbell"
+            requests.post(NTFY_URL, data=f, headers={
                 "Title": "Doorbell!", "Priority": "high",
                 "Tags": "bell", "Filename": "doorbell.jpg",
                 "Actions": f"view, Talk Back, {intercom_url}",
