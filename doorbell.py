@@ -49,6 +49,22 @@ def dominant_frequency(samples, sample_rate):
     return freqs[np.argmax(fft)]
 
 
+def detect_person(image_path):
+    """Return True if a person is detected in the image."""
+    try:
+        import cv2
+        img = cv2.imread(image_path)
+        if img is None:
+            return True  # if image can't be read, don't block notification
+        hog = cv2.HOGDescriptor()
+        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        boxes, _ = hog.detectMultiScale(img, winStride=(8, 8), padding=(4, 4), scale=1.05)
+        return len(boxes) > 0
+    except Exception as e:
+        print(f"Person detection error: {e}")
+        return True  # if detection fails, don't block notification
+
+
 def take_snapshot():
     """Capture a photo from the webcam. Returns True on success."""
     try:
@@ -70,18 +86,20 @@ def take_snapshot():
 
 def send_notification():
     try:
+        if not take_snapshot():
+            print("Camera failed, skipping notification.")
+            return
+        if not detect_person(SNAPSHOT_PATH):
+            print("No person detected, ignoring.")
+            return
         headers = {
             "Title": "Doorbell!",
             "Priority": "high",
             "Tags": "bell",
+            "Filename": "doorbell.jpg",
         }
-        if take_snapshot():
-            with open(SNAPSHOT_PATH, "rb") as f:
-                headers["Filename"] = "doorbell.jpg"
-                requests.post(NTFY_URL, data=f, headers=headers, timeout=15)
-        else:
-            requests.post(NTFY_URL, headers=headers,
-                          data="Someone is at the door!", timeout=5)
+        with open(SNAPSHOT_PATH, "rb") as f:
+            requests.post(NTFY_URL, data=f, headers=headers, timeout=15)
         print("Notification sent!")
     except Exception as e:
         print(f"Failed to send notification: {e}")
